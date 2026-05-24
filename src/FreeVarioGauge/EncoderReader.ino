@@ -3,57 +3,65 @@ void EncoderReader() {
   //*****************************************
   //****  Read Encoder & Buttons / Dips  ****
   //*****************************************
-  long encoderPositionNew = Vario_Enc.getCount();
-  long LONGPRESS_TIME = 500;
-  long SHORTPRESS_TIME_MIN = 20;
-  long SHORTPRESS_TIME_MAX = 50;
-  int DEBOUNCE_DELAY = 20;
+  const long LONGPRESS_TIME     = 500;
+  const long SHORTPRESS_TIME_MIN = 20;
+  const int  DEBOUNCE_DELAY     = 20;
 
-  if ((encoderPositionNew > encoderPosition) && !pushButtonPressed) {
-    encoderRight = true;
-    encoderWasMoved = true;
-  }
-  else if ((encoderPositionNew < encoderPosition) && !pushButtonPressed) {
-    encoderLeft = true;
-    encoderWasMoved = true;
-  }
-  else {
+  // Cooldown de 100ms entre deux déclenchements : absorbe tous les counts parasites
+  // d'un même cran, quel que soit le nombre de counts par detent de l'encodeur
+  const unsigned long ENCODER_COOLDOWN = 100;
+  static unsigned long lastEncoderTrigger = 0;
+  bool cooldownExpired = (millis() - lastEncoderTrigger) >= ENCODER_COOLDOWN;
+
+  long rawCount = Vario_Enc.getCount();
+
+  if (rawCount != (long)encoderPosition) {
+    if (!pushButtonPressed && cooldownExpired) {
+      if (rawCount > (long)encoderPosition) {
+        encoderRight = true;
+        encoderLeft  = false;
+      } else {
+        encoderLeft  = true;
+        encoderRight = false;
+      }
+      encoderWasMoved    = true;
+      lastEncoderTrigger = millis();
+    } else {
+      encoderWasMoved = false;
+      encoderRight    = false;
+      encoderLeft     = false;
+    }
+    encoderPosition = rawCount;
+  } else {
     encoderWasMoved = false;
-    encoderRight = false;
-    encoderLeft = false;
-  }
-  encoderPosition = encoderPositionNew;
-
-  if (digitalRead(VE_PB) == LOW) {
-    pushButtonPressed = true;
-  }
-  else {
-    pushButtonPressed = false;
+    encoderRight    = false;
+    encoderLeft     = false;
   }
 
-  if (pushButtonPressed && pushButtonPressTime == NOT_SET) {
+  // Button: detect press and release edges
+  bool buttonCurrentlyPressed = (digitalRead(VE_PB) == LOW);
+
+  if (!pushButtonPressed && buttonCurrentlyPressed) {
+    // Falling edge – debounce then start timing
     vTaskDelay(DEBOUNCE_DELAY);
-    pushButtonPressTime = millis();
+    if (digitalRead(VE_PB) == LOW) {
+      pushButtonPressed   = true;
+      pushButtonPressTime = millis();
+      pushButtonIsShortpress = true;
+    }
   }
-
-  else if (pushButtonPressed && pushButtonPressTime != NOT_SET) {}
-  else {
+  else if (pushButtonPressed && !buttonCurrentlyPressed) {
+    // Rising edge
+    vTaskDelay(DEBOUNCE_DELAY);
+    pushButtonPressed   = false;
     pushButtonPressTime = NOT_SET;
-    pushButtonPressed = false;
-    vTaskDelay(DEBOUNCE_DELAY);
+    pushButtonIsLongpress = false;
   }
 
-  if (pushButtonPressTime != NOT_SET && (millis() - pushButtonPressTime >= LONGPRESS_TIME)) {
-    pushButtonIsLongpress = true;
+  // Detect longpress while button is held
+  if (pushButtonPressed && pushButtonPressTime != NOT_SET &&
+      (millis() - pushButtonPressTime) >= LONGPRESS_TIME) {
+    pushButtonIsLongpress  = true;
     pushButtonIsShortpress = false;
-  }
-  else if (pushButtonIsLongpress && !pushButtonPressed) {
-    pushButtonPressTime = NOT_SET;
-  }
-  else if (pushButtonPressTime != NOT_SET && (millis() - pushButtonPressTime >= SHORTPRESS_TIME_MIN) && (millis() - pushButtonPressTime < SHORTPRESS_TIME_MAX)) {
-    pushButtonIsShortpress = true;
-  }
-  else if (pushButtonIsLongpress && !pushButtonPressed) {
-    pushButtonPressTime = NOT_SET;
   }
 }

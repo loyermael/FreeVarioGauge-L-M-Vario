@@ -54,7 +54,7 @@ void Menu () {
     selectedMenu = MENU_VALUE_TYP;
   }
 
-  if (pushButtonIsLongpress && !pushButtonPressed && !menuWasTriggered && !subMenuTriggered && !subMenuLevelTwoTriggered && !encoderWasMoved && timeSystemRuns > TIME_SINCE_BOOT) {
+  if (pushButtonIsLongpress && !menuWasTriggered && !subMenuTriggered && !subMenuLevelTwoTriggered && !encoderWasMoved && timeSystemRuns > TIME_SINCE_BOOT) {
     menuWasTriggered = true;
     if (SourceIsLarus) {
       selectedMenu = MENU_HIGHT_TYP;
@@ -64,8 +64,6 @@ void Menu () {
     }
     setDrawMenuLevel(selectedMenu, 1);
     menuActiveSince = millis(); // set time to now
-    // Wait for release of pushButton
-    while (digitalRead(VE_PB) == LOW) {}
     pushButtonIsLongpress = false;
   }
 
@@ -85,10 +83,7 @@ void Menu () {
     menuActiveSince = millis(); // set time to now
   }
   else if (menuWasTriggered && !subMenuTriggered && pushButtonIsShortpress) {
-    // Wait for release of pushButton
-    while (digitalRead(VE_PB) == LOW) {
-      pushButtonIsShortpress = false;
-    }
+    pushButtonIsShortpress = false;
     if (selectedMenu == MENU_SPEED_TYP) {
       menuWasTriggered = false;
       subMenuTriggered = true;
@@ -125,10 +120,7 @@ void Menu () {
   }
 
   else if (!menuWasTriggered && subMenuTriggered && pushButtonIsShortpress) {
-    // Wait for release of pushButton
-    while (digitalRead(VE_PB) == LOW) {
-      pushButtonIsShortpress = false;
-    }
+    pushButtonIsShortpress = false;
     //Serial.println("Einzustellnder Wert wird ausgewählt");
     if (selectedMenu == MENU_SPEED_TYP || selectedMenu  == MENU_HIGHT_TYP) {
       subMenuTriggered = false;
@@ -151,10 +143,7 @@ void Menu () {
   }
 
   else if (!menuWasTriggered && !subMenuTriggered && pushButtonIsShortpress && subMenuLevelTwoTriggered && !encoderWasMoved) {
-    // Wait for release of pushButton
-    while (digitalRead(VE_PB) == LOW) {
-      pushButtonIsShortpress = false;
-    }
+    pushButtonIsShortpress = false;
     //Serial.println("eingestellter Wert wird gespeichert");
     subMenuLevelTwoTriggered = false;
     settingStandardValueType();

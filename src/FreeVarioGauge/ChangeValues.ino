@@ -163,11 +163,11 @@ void changeLevelTwoMenu (bool changeLevelTwoValue) {
 }
 void changeLevelTwoMenuTurn (bool changeLevelTwoValue) {
   if (nameSetting == "Mute") {
-    if (changeLevelTwoMenuTurn && valueMuteAsInt == 1) {
+    if (changeLevelTwoValue && valueMuteAsInt == 1) {
       valueMuteAsInt = 0;
       valueMuteAsString = "OFF";
     }
-    else if (changeLevelTwoMenuTurn && valueMuteAsInt == 0) {
+    else if (changeLevelTwoValue && valueMuteAsInt == 0) {
       valueMuteAsInt = 1;
       valueMuteAsString = "ON";
     }
@@ -181,11 +181,11 @@ void changeLevelTwoMenuTurn (bool changeLevelTwoValue) {
     Serial2.printf("%s%X\n", muteStr.c_str(), checksum);
   }
   if (nameSetting == "Wind") {
-    if (changeLevelTwoMenuTurn && valueWindAsInt == 1) {
+    if (changeLevelTwoValue && valueWindAsInt == 1) {
       valueWindAsInt = 0;
       valueWindAsString = "OFF";
     }
-    else if (changeLevelTwoMenuTurn && valueWindAsInt == 0) {
+    else if (changeLevelTwoValue && valueWindAsInt == 0) {
       valueWindAsInt = 1;
       valueWindAsString = "ON";
     }
@@ -194,11 +194,11 @@ void changeLevelTwoMenuTurn (bool changeLevelTwoValue) {
     prefs.end();
   }
   if (nameSetting == "STF") {
-    if (changeLevelTwoMenuTurn && valueSTFAsInt == 0) {
+    if (changeLevelTwoValue && valueSTFAsInt == 0) {
       valueSTFAsInt = 1;
       valueSTFAsString = "OV";
     }
-    else if (changeLevelTwoMenuTurn && valueSTFAsInt == 1) {
+    else if (changeLevelTwoValue && valueSTFAsInt == 1) {
       valueSTFAsInt = 0;
       valueSTFAsString = "Flaps";
     }
