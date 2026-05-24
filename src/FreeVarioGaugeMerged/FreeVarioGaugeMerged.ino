@@ -1184,15 +1184,18 @@ void SerialScan (void *p) {
   }
   while (1) {
     String dataString;
-    if (Serial2.available()) {
-      serialString = Serial2.read();
+    // Priorité à Serial2 (vrai vario), fallback sur Serial (USB) pour simulation PC
+    Stream* src = Serial2.available() ? (Stream*)&Serial2
+                : (Serial.available()  ? (Stream*)&Serial : nullptr);
+    if (src) {
+      serialString = src->read();
       if (serialString == '$') {
         long timeSystemReady = millis() - lastTimeReady;
         while (serialString != 10) {
           if (serialString >= 32 && serialString <= 126) {
             dataString += serialString;
           }
-          serialString = Serial2.read();
+          serialString = src->read();
           if (dataString.length() > 300) {
             dataString = "ERROR";
             Serial.println("Break serial Read!");
@@ -2492,7 +2495,7 @@ void setup() {
 
   Vario_Enc.setCount(16380);
   pinMode(VE_PB, INPUT_PULLUP);
-  pinMode(STF_MODE, INPUT_PULLUP);
+  pinMode(STF_MODE, INPUT_PULLDOWN);  // no switch = LOW = Vario mode by default
   pinMode(STF_AUTO, INPUT_PULLUP);
   Serial.begin(115200, SERIAL_8N1);
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
