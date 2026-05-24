@@ -75,6 +75,12 @@ const char *host = "FreeVario_Displayboard";
 const char *ssid = "FV_Displayboard";
 const char *password = "12345678";
 
+// XCSoar WiFi TCP server
+const char *xcsoar_ssid = "LIM-Vario";
+const char *xcsoar_pass = "vario1234";
+WiFiServer xcsoarServer(4353);
+WiFiClient xcsoarClient;
+
 
 String displayMode = "Waiting ...";
 String soundMode = "Waiting ...";
@@ -1184,9 +1190,15 @@ void SerialScan (void *p) {
   }
   while (1) {
     String dataString;
-    // Priorité à Serial2 (vrai vario), fallback sur Serial (USB) pour simulation PC
-    Stream* src = Serial2.available() ? (Stream*)&Serial2
-                : (Serial.available()  ? (Stream*)&Serial : nullptr);
+    // Accepter nouveau client XCSoar si pas encore connecté
+    if (!xcsoarClient || !xcsoarClient.connected()) {
+      WiFiClient newClient = xcsoarServer.available();
+      if (newClient) xcsoarClient = newClient;
+    }
+    // Priorité : XCSoar WiFi > Serial2 (vrai vario) > Serial (USB simulation PC)
+    Stream* src = (xcsoarClient && xcsoarClient.connected() && xcsoarClient.available()) ? (Stream*)&xcsoarClient
+                : (Serial2.available() ? (Stream*)&Serial2
+                : (Serial.available()  ? (Stream*)&Serial : nullptr));
     if (src) {
       serialString = src->read();
       if (serialString == '$') {
@@ -1694,6 +1706,103 @@ void SerialScan (void *p) {
       serial2Error = true;
     }
 
+    //*******************************
+    //****  XCSoar WiFi (NMEA)   ****
+    //*******************************
+    // Détection source XCSoar via WiFi
+    if (!SourceIsXCSoar && (dataString.startsWith("$LXWP0") || dataString.startsWith("$GPRMC"))) {
+      SourceIsXCSoar = true;
+      SourceIsLarus  = false;
+    }
+
+    // $LXWP0 : vario, vitesse air, altitude, netto vario
+    // $LXWP0,logger,IAS,BaroAlt,Vario,Hdg,WS,WD,u,u,CmpHdg,GS,Netto*cs
+    if (dataString.startsWith("$LXWP0")) {
+      String s = dataString;
+      int p = s.indexOf(',') + 1; // skip $LXWP0
+      p = s.indexOf(',', p) + 1;  // skip logger → champ 2 (IAS)
+
+      // IAS km/h
+      int e = s.indexOf(',', p);
+      float ias = s.substring(p, e).toFloat();
+      if (ias > 0) {
+        valueTasAsFloat = ias;
+        char buf[20];
+        valueTasAsString = dtostrf(valueTasAsFloat, 3, 0, buf);
+      }
+      p = e + 1;
+
+      // Altitude baro m
+      e = s.indexOf(',', p);
+      float alt = s.substring(p, e).toFloat();
+      if (alt > 0) {
+        valueHigAsFloat = alt;
+        char buf[20];
+        valueHigAsString = dtostrf(valueHigAsFloat, 4, 0, buf);
+      }
+      p = e + 1;
+
+      // Vario m/s
+      e = s.indexOf(',', p);
+      String varStr = s.substring(p, e);
+      if (varStr.length() > 0) var = varStr.toFloat();
+      p = e + 1;
+
+      // Sauter champs 5 à 11 (7 virgules)
+      for (int i = 0; i < 7; i++) {
+        int next = s.indexOf(',', p);
+        if (next < 0) { p = -1; break; }
+        p = next + 1;
+      }
+
+      // Netto vario m/s (champ 12)
+      if (p > 0) {
+        e = s.indexOf('*', p);
+        if (e < 0) e = s.length();
+        valueVaaAsFloat = s.substring(p, e).toFloat();
+        char buf[20];
+        if (valueVaaAsFloat >= 0)
+          valueVaaAsString = "+" + String(dtostrf(abs(valueVaaAsFloat), 3, 1, buf));
+        else
+          valueVaaAsString = "-" + String(dtostrf(abs(valueVaaAsFloat), 3, 1, buf));
+      }
+    }
+
+    // $LXWP2 : MacCready
+    // $LXWP2,MC,bugs,ballast,...
+    else if (dataString.startsWith("$LXWP2")) {
+      int c1 = dataString.indexOf(',');
+      int c2 = dataString.indexOf(',', c1 + 1);
+      if (c1 > 0 && c2 > 0) {
+        float mc = dataString.substring(c1 + 1, c2).toFloat();
+        if (mc >= 0.0 && mc <= 5.0) {
+          valueMacAsFloat = mc;
+          char mcBuf[8];
+          dtostrf(valueMacAsFloat, 3, 1, mcBuf);
+          valueMacAsString = String(mcBuf);
+        }
+      }
+    }
+
+    // $GPRMC : vitesse sol et cap
+    // $GPRMC,time,A,lat,N,lon,E,speed_kts,heading,...
+    else if (dataString.startsWith("$GPRMC")) {
+      // Trouver les 10 premières virgules/étoiles
+      int c[10]; int cc = 0;
+      for (int i = 0; i < (int)dataString.length() && cc < 10; i++) {
+        if (dataString[i] == ',' || dataString[i] == '*') c[cc++] = i;
+      }
+      if (cc >= 9 && dataString.substring(c[1] + 1, c[2]) == "A") {
+        // Speed knots → km/h (champ 7)
+        float speedKts = dataString.substring(c[6] + 1, c[7]).toFloat();
+        valueGrsAsFloat = speedKts * 1.852f;
+        char buf[20];
+        valueGrsAsString = dtostrf(valueGrsAsFloat, 3, 0, buf);
+        // Cap (champ 8)
+        hea = dataString.substring(c[7] + 1, c[8]).toFloat();
+      }
+    }
+
     //*****************************
     //****  Check Flight Mode  ****
     //*****************************
@@ -1786,7 +1895,19 @@ void showBootScreen(String versionString) {
     oldChangeMode = changeMode;
   }
   if (updatemode == false) {
-    WiFi.mode(WIFI_OFF);
+    // Démarrage AP WiFi pour XCSoar
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(xcsoar_ssid, xcsoar_pass);
+    xcsoarServer.begin();
+
+    bootSprite.createSprite(195, 25);
+    bootSprite.fillSprite(TFT_WHITE);
+    bootSprite.setCursor(0, 2);
+    bootSprite.println("WiFi: LIM-Vario :4353");
+    bootSprite.pushSprite(40, 245);
+    bootSprite.deleteSprite();
+    delay(1500);
+
     bootSprite.createSprite(195, 25);
     bootSprite.fillSprite(TFT_WHITE);
     bootSprite.setCursor(0, 2);
